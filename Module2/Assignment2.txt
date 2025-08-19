@@ -1,0 +1,74 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('assets/fb441e62df2d58994928907a91895ec62c2c42e6cd075c2700843b89.csv',index_col='ID')
+df['Date'] = pd.to_datetime(df['Date'])
+
+# Remove leap day data
+df = df[~((df['Date'].dt.month == 2) & (df['Date'].dt.day == 29))]
+
+# Convert to °C
+df['Data_Value'] = df['Data_Value'] / 10
+
+# Get Tmin and Tmax dataframes and sort them by Date
+df_max = df[df['Element'] == 'TMAX'].drop(columns=['Element']).sort_values(by='Date')
+df_min = df[df['Element'] == 'TMIN'].drop(columns=['Element']).sort_values(by='Date')
+
+# Get the max and min values for each day
+df_max = df_max.groupby('Date').max()
+df_min = df_min.groupby('Date').min()
+
+# Separate the 2015 data
+df_2015 = pd.merge(df_max,df_min,on='Date',suffixes=('_max','_min'))
+df_2015 = df_2015[df_2015.index.year==2015]
+df_max = df_max[df_max.index.year!=2015]
+df_min = df_min[df_min.index.year!=2015]
+
+# Remove the year from the 'Date' column
+df_max = df_max.reset_index()
+df_min = df_min.reset_index()
+df_2015 = df_2015.reset_index()
+df_min['Date'] = df_min['Date'].dt.strftime('%m-%d')
+df_max['Date'] = df_max['Date'].dt.strftime('%m-%d')
+df_2015['Date'] = df_2015['Date'].dt.strftime('%m-%d')
+
+# Get the max value for each day
+df_min = df_min.groupby('Date').min()
+df_max = df_max.groupby('Date').max()
+df_2015 = df_2015.groupby('Date').agg({'Data_Value_max': 'max', 'Data_Value_min': 'min'})
+
+# Mask values to use in plot
+df_2015['Data_Value_max_higher'] = df_2015['Data_Value_max'] > df_max.loc[df_2015.index,'Data_Value']
+df_2015['Data_Value_min_lower'] = df_2015['Data_Value_min'] < df_min.loc[df_2015.index,'Data_Value']
+
+plt.figure(figsize=(12,8))
+
+# Configure labels
+plt.title('Temperature gap for each day(2005-2014) vs 2015 outstanding points',size=15)
+plt.xlabel('Month',size=15)
+plt.ylabel('Temperature',size=15)
+
+# Configure data
+plt.plot(df_min['Data_Value'],color='blue',label='Min(2005-1014)')
+plt.plot(df_max['Data_Value'],color='red',label='Max(2005-2014)')
+
+plt.fill_between(range(len(df_max['Data_Value'])),
+                df_max['Data_Value'],df_min['Data_Value'],
+                facecolor='grey',
+                alpha=.2)
+
+# Configure ticks to be used in xlabel
+ticks=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sept','Oct','Nov','Dec']
+plt.xticks(range(0,360,30),ticks,rotation=45)
+plt.legend(loc=1,frameon=True, title='legend');
+
+# Remove the box around the plot
+for spine in plt.gca().spines.values():
+    spine.set_visible(False)
+
+# Plot 2015 data points that broke the record
+plt.scatter(df_2015.index[df_2015['Data_Value_max_higher']], df_2015[df_2015['Data_Value_max_higher']]['Data_Value_max'], color='black', label='2015 Record High Broken',s=3)
+plt.scatter(df_2015.index[df_2015['Data_Value_min_lower']], df_2015[df_2015['Data_Value_min_lower']]['Data_Value_min'], color='magenta', label='2015 Record Low Broken',s=3)
+
+plt.legend(fontsize=9,loc=1,frameon=True, title='legend');
+plt.savefig('plot.png')
